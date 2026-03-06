@@ -1,0 +1,23 @@
+{
+  "name": "agent-dashboard",
+  "version": "1.0.0",
+  "description": "Real-time pixel-art dashboard for monitoring Claude Code CLI agent sessions",
+  "main": "server.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "ws": "^8.18.0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "dashboard",
+    "monitor",
+    "agent",
+    "cli"
+  ]
+}
