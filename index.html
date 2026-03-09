@@ -136,6 +136,39 @@
     }
     .ctrl-btn:hover { border-color: #7aa2f7; color: #7aa2f7; }
     .ctrl-btn.active { border-color: #9ece6a; color: #9ece6a; }
+    .new-agent-btn {
+      background: rgba(122,162,247,0.15); border: 1px solid #7aa2f7; border-radius: 6px;
+      padding: 6px 12px; color: #7aa2f7; cursor: pointer;
+      font-family: inherit; font-size: 0.75rem; font-weight: bold;
+      letter-spacing: 1px; transition: all 0.2s;
+    }
+    .new-agent-btn:hover { background: rgba(122,162,247,0.25); }
+    .new-agent-modal {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); z-index: 100;
+      justify-content: center; align-items: center;
+    }
+    .new-agent-modal.open { display: flex; }
+    .new-agent-dialog {
+      background: #1a1b26; border: 1px solid #24283b; border-radius: 12px;
+      padding: 24px; min-width: 380px; max-width: 460px;
+    }
+    .new-agent-dialog h2 { color: #7aa2f7; font-size: 1rem; margin-bottom: 16px; letter-spacing: 1px; }
+    .new-agent-dialog label { display: block; color: #8890b0; font-size: 0.75rem; margin-bottom: 4px; margin-top: 12px; }
+    .new-agent-dialog select, .new-agent-dialog input {
+      width: 100%; background: #12121a; border: 1px solid #24283b; border-radius: 6px;
+      padding: 8px 10px; color: #c0caf5; font-family: inherit; font-size: 0.8rem;
+    }
+    .new-agent-dialog select:focus, .new-agent-dialog input:focus { outline: none; border-color: #7aa2f7; }
+    .new-agent-actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
+    .new-agent-actions button {
+      padding: 8px 16px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; font-size: 0.8rem; border: 1px solid transparent;
+    }
+    .btn-cancel { background: #24283b; color: #8890b0; border-color: #24283b; }
+    .btn-cancel:hover { border-color: #565f89; }
+    .btn-launch { background: #7aa2f7; color: #1a1b26; font-weight: bold; }
+    .btn-launch:hover { background: #89b4fa; }
   </style>
 </head>
 <body>
@@ -143,7 +176,10 @@
   <div id="canvas-wrap"><canvas id="c"></canvas></div>
   <div id="panel">
     <div id="panel-header">
-      <h1>AGENT DASHBOARD</h1>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h1>AGENT DASHBOARD</h1>
+        <button class="new-agent-btn" onclick="openNewAgentModal()">+ NUEVO</button>
+      </div>
       <p class="subtitle">Claude Code Monitor — <span id="total">0</span> agentes</p>
       <div class="stats" id="stats"></div>
     </div>
@@ -152,6 +188,23 @@
     </div>
     <div id="panel-footer">
       <div class="plan-section" id="plan-usage"></div>
+    </div>
+  </div>
+</div>
+<div class="new-agent-modal" id="newAgentModal" onclick="if(event.target===this)closeNewAgentModal()">
+  <div class="new-agent-dialog">
+    <h2>NUEVO AGENTE</h2>
+    <label>Proyecto / Directorio</label>
+    <select id="newAgentProject">
+      <option value="">Cargando...</option>
+    </select>
+    <label>O ingresar ruta manualmente</label>
+    <input id="newAgentCustomDir" type="text" placeholder="~/Sites/mi-proyecto">
+    <label>Prompt inicial (opcional)</label>
+    <input id="newAgentPrompt" type="text" placeholder="Describe la tarea para el agente...">
+    <div class="new-agent-actions">
+      <button class="btn-cancel" onclick="closeNewAgentModal()">Cancelar</button>
+      <button class="btn-launch" onclick="launchNewAgent()">Lanzar en iTerm</button>
     </div>
   </div>
 </div>
@@ -290,6 +343,456 @@ const TD2=[
 [_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
 ];
 
+// ================================================================
+// BODY TYPE VARIANTS
+// ================================================================
+// Type 0: Default (short hair) — uses base templates directly
+// Type 1: Long hair — hair extends down sides of face
+// Type 2: Cap/beanie — hat on top of head
+const NUM_BODY_TYPES = 3;
+
+// Clone a template and apply head modifications
+function cloneTemplate(tpl) { return tpl.map(r => [...r]); }
+
+// Long hair variants: extend hair down beside the face
+function makeLongHair(tpl) {
+  const t = cloneTemplate(tpl);
+  // Find where hair starts (first row with H)
+  for (let r = 0; r < t.length; r++) {
+    if (t[r].includes(H)) {
+      // Add hair strands on sides of face rows (skin rows below hair)
+      for (let fr = r + 3; fr < Math.min(r + 8, t.length); fr++) {
+        if (t[fr][4] === _ && (t[fr][5] === K || t[fr][5] === S || t[fr][5] === _)) t[fr][4] = H;
+        if (t[fr][11] === _ && (t[fr][10] === K || t[fr][10] === S || t[fr][10] === _)) t[fr][11] = H;
+      }
+      break;
+    }
+  }
+  return t;
+}
+
+// Cap variants: add a cap/visor above the hair
+function makeCap(tpl) {
+  const t = cloneTemplate(tpl);
+  const G = '#hat'; // Will be resolved to shirt color (matching outfit)
+  // Find first hair row
+  for (let r = 0; r < t.length; r++) {
+    if (t[r].includes(H)) {
+      // Replace top hair row with cap and add visor above
+      if (r > 0) {
+        // Cap brim (wider than head)
+        t[r - 1] = t[r - 1].map((c, i) => (i >= 4 && i <= 12) ? G : c);
+      }
+      // Cap top rows (replace hair)
+      t[r] = t[r].map((c, i) => c === H ? G : c);
+      if (r + 1 < t.length) {
+        t[r + 1] = t[r + 1].map((c, i) => c === H ? G : c);
+      }
+      break;
+    }
+  }
+  return t;
+}
+
+// Resolve with hat color mapped to shirt
+function resolveVariant(tpl, pal) {
+  return tpl.map(r => r.map(c => {
+    if (c === _) return '';
+    if (c === E) return E;
+    if (c === '#hat') return pal[S]; // cap matches shirt color
+    return pal[c] || c;
+  }));
+}
+
+// BODY_TYPES will be fully populated after RD1/RD2 are defined below
+
+// Reading sprites (sitting, arms at sides, subtle head bob between frames)
+const RD1=[
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,H,H,H,H,_,_,_,_,_,_],
+[_,_,_,_,_,H,H,H,H,H,H,_,_,_,_,_],
+[_,_,_,_,_,H,H,H,H,H,H,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,K,E,K,K,E,K,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,_,S,S,S,S,_,_,_,_,_,_],
+[_,_,_,_,_,S,S,S,S,S,S,_,_,_,_,_],
+[_,_,_,_,S,S,S,S,S,S,S,S,_,_,_,_],
+[_,_,_,_,S,S,S,S,S,S,S,S,_,_,_,_],
+[_,_,_,_,K,S,S,S,S,S,S,K,_,_,_,_],
+[_,_,_,_,_,S,S,S,S,S,S,_,_,_,_,_],
+[_,_,_,_,_,_,P,P,P,P,_,_,_,_,_,_],
+[_,_,_,_,_,P,P,P,P,P,P,_,_,_,_,_],
+[_,_,_,_,_,P,P,P,P,P,P,_,_,_,_,_],
+[_,_,_,_,_,P,P,_,_,P,P,_,_,_,_,_],
+[_,_,_,_,_,O,O,_,_,O,O,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+];
+const RD2=[
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,H,H,H,H,_,_,_,_,_,_],
+[_,_,_,_,_,H,H,H,H,H,H,_,_,_,_,_],
+[_,_,_,_,_,H,H,H,H,H,H,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,K,E,K,K,E,K,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,K,K,K,K,K,K,_,_,_,_,_],
+[_,_,_,_,_,_,S,S,S,S,_,_,_,_,_,_],
+[_,_,_,_,_,S,S,S,S,S,S,_,_,_,_,_],
+[_,_,_,_,S,S,S,S,S,S,S,S,_,_,_,_],
+[_,_,_,_,S,S,S,S,S,S,S,S,_,_,_,_],
+[_,_,_,_,K,S,S,S,S,S,S,K,_,_,_,_],
+[_,_,_,_,_,S,S,S,S,S,S,_,_,_,_,_],
+[_,_,_,_,_,_,P,P,P,P,_,_,_,_,_,_],
+[_,_,_,_,_,P,P,P,P,P,P,_,_,_,_,_],
+[_,_,_,_,_,P,P,_,_,P,P,_,_,_,_,_],
+[_,_,_,_,_,O,O,_,_,O,O,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+];
+
+// Reading tools set (for animation differentiation)
+const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']);
+
+// Generate all body type variant templates (now that RD1/RD2 exist)
+const BODY_TYPES = [
+  // Type 0: Default (short hair)
+  { walk1: WD1, walk2: WD2, type1: TD1, type2: TD2, read1: RD1, read2: RD2 },
+  // Type 1: Long hair
+  { walk1: makeLongHair(WD1), walk2: makeLongHair(WD2), type1: makeLongHair(TD1), type2: makeLongHair(TD2), read1: makeLongHair(RD1), read2: makeLongHair(RD2) },
+  // Type 2: Cap/beanie
+  { walk1: makeCap(WD1), walk2: makeCap(WD2), type1: makeCap(TD1), type2: makeCap(TD2), read1: makeCap(RD1), read2: makeCap(RD2) },
+];
+
+// ================================================================
+// OFFICE DECORATIONS — wall, floor, furniture sprites
+// ================================================================
+
+// Floor colors (subtle checkerboard)
+const FLOOR_A = '#1e1e2e';
+const FLOOR_B = '#1c1c2a';
+
+// Wall sprite 16x16 (top wall segment: brick-like pattern)
+const WALL_TOP = (() => {
+  const W='#2a2a3e', B='#24243a', D='#1e1e30', L='#32324a';
+  return [
+    [W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W],
+    [L,L,L,L,L,L,L,L,L,L,L,L,L,L,L,L],
+    [W,W,W,W,W,W,W,D,W,W,W,W,W,W,W,W],
+    [W,W,W,W,W,W,W,D,W,W,W,W,W,W,W,W],
+    [B,B,B,D,B,B,B,B,B,B,D,B,B,B,B,B],
+    [W,W,W,D,W,W,W,W,W,W,D,W,W,W,W,W],
+    [W,W,W,D,W,W,W,W,W,W,D,W,W,W,W,W],
+    [B,B,B,B,B,B,B,D,B,B,B,B,B,B,D,B],
+    [W,W,W,W,W,W,W,D,W,W,W,W,W,W,D,W],
+    [W,W,W,W,W,W,W,D,W,W,W,W,W,W,D,W],
+    [B,B,B,D,B,B,B,B,B,B,D,B,B,B,B,B],
+    [W,W,W,D,W,W,W,W,W,W,D,W,W,W,W,W],
+    [W,W,W,D,W,W,W,W,W,W,D,W,W,W,W,W],
+    [D,D,D,D,D,D,D,D,D,D,D,D,D,D,D,D],
+    [D,D,D,D,D,D,D,D,D,D,D,D,D,D,D,D],
+    ['#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a','#18182a'],
+  ];
+})();
+
+// Side wall (left) 16x16
+const WALL_SIDE = (() => {
+  const W='#2a2a3e', B='#24243a', D='#1e1e30';
+  const col = [W,W,B,W,W,B,W,W,B,W,W,B,W,W,B,W];
+  return col.map(c => [D,D,c,c,c,c,c,c,c,c,c,c,c,c,c,c]);
+})();
+
+// Plant pot 16x16 (small potted plant)
+const PLANT = [
+[_,_,_,_,_,_,'#2d6b3a',_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,'#2d6b3a','#3a8a4a','#2d6b3a',_,_,_,_,_,_,_,_],
+[_,_,_,_,'#2d6b3a','#3a8a4a','#4a9a5a','#3a8a4a','#2d6b3a',_,_,_,_,_,_,_],
+[_,_,_,'#2d6b3a','#3a8a4a','#4a9a5a','#5aaa6a','#4a9a5a','#3a8a4a','#2d6b3a',_,_,_,_,_,_],
+[_,_,'#2d6b3a','#3a8a4a','#4a9a5a','#5aaa6a','#4a9a5a','#5aaa6a','#4a9a5a','#3a8a4a','#2d6b3a',_,_,_,_,_],
+[_,_,_,'#2d6b3a','#3a8a4a','#4a9a5a','#5aaa6a','#4a9a5a','#3a8a4a','#2d6b3a',_,_,_,_,_,_],
+[_,_,_,_,'#2d6b3a','#3a8a4a','#4a9a5a','#3a8a4a','#2d6b3a',_,_,_,_,_,_,_],
+[_,_,_,_,_,'#2d6b3a','#3a8a4a','#2d6b3a',_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,'#5a3a1a',_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,'#5a3a1a',_,_,_,_,_,_,_,_,_],
+[_,_,_,_,'#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C',_,_,_,_,_,_,_],
+[_,_,_,_,'#A0703C','#6B4226','#6B4226','#6B4226','#A0703C',_,_,_,_,_,_,_],
+[_,_,_,_,'#A0703C','#6B4226','#6B4226','#6B4226','#A0703C',_,_,_,_,_,_,_],
+[_,_,_,_,'#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C','#8B5E3C',_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+];
+
+// Water cooler 16x16
+const COOLER = [
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+[_,_,_,_,_,'#88AACC','#88AACC','#88AACC','#88AACC','#88AACC',_,_,_,_,_,_],
+[_,_,_,_,_,'#6699BB','#AADDFF','#AADDFF','#6699BB','#6699BB',_,_,_,_,_,_],
+[_,_,_,_,_,'#6699BB','#88CCEE','#88CCEE','#6699BB','#6699BB',_,_,_,_,_,_],
+[_,_,_,_,_,'#6699BB','#88CCEE','#88CCEE','#6699BB','#6699BB',_,_,_,_,_,_],
+[_,_,_,_,_,'#88AACC','#88AACC','#88AACC','#88AACC','#88AACC',_,_,_,_,_,_],
+[_,_,_,_,_,_,'#DDD','#DDD','#DDD',_,_,_,_,_,_,_],
+[_,_,_,_,_,_,'#CCC','#CCC','#CCC',_,_,_,_,_,_,_],
+[_,_,_,_,_,'#DDD','#DDD','#DDD','#DDD','#DDD',_,_,_,_,_,_],
+[_,_,_,_,_,'#CCC','#BBB','#BBB','#BBB','#CCC',_,_,_,_,_,_],
+[_,_,_,_,_,'#CCC','#BBB','#BBB','#BBB','#CCC',_,_,_,_,_,_],
+[_,_,_,_,_,'#DDD','#DDD','#DDD','#DDD','#DDD',_,_,_,_,_,_],
+[_,_,_,_,_,_,'#888',_,_,'#888',_,_,_,_,_,_],
+[_,_,_,_,_,_,'#888',_,_,'#888',_,_,_,_,_,_],
+[_,_,_,_,_,'#999','#999','#999','#999','#999',_,_,_,_,_,_],
+[_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],
+];
+
+// Whiteboard 32x16 (2 tiles wide, 1 tile tall, placed against top wall)
+const WHITEBOARD = (() => {
+  const F='#555', B='#EEEEF5', M='#DDDDEE';
+  const rows = [];
+  rows.push(Array(32).fill(''));
+  rows.push([_,...Array(30).fill(F),_]);
+  for (let i = 0; i < 10; i++) {
+    const fill = i === 4 || i === 7 ? M : B;
+    rows.push([_,F,...Array(28).fill(fill),F,_]);
+  }
+  rows.push([_,...Array(30).fill(F),_]);
+  rows.push(Array(32).fill(''));
+  rows.push(Array(32).fill(''));
+  rows.push(Array(32).fill(''));
+  return rows;
+})();
+
+// Bookshelf 16x16
+const BOOKSHELF = (() => {
+  const W='#6B4E0A', S='#8B6914', books = ['#CC4444','#4488CC','#44AA66','#AA55CC','#CCAA33','#FF8844'];
+  const rows = [];
+  rows.push(Array(16).fill(''));
+  rows.push([_,_,W,S,S,S,S,S,S,S,S,S,S,W,_,_]);
+  // Shelf 1
+  rows.push([_,_,W,books[0],books[0],books[1],books[1],books[2],books[3],books[3],books[4],books[5],books[5],W,_,_]);
+  rows.push([_,_,W,books[0],books[0],books[1],books[1],books[2],books[3],books[3],books[4],books[5],books[5],W,_,_]);
+  rows.push([_,_,W,S,S,S,S,S,S,S,S,S,S,W,_,_]);
+  // Shelf 2
+  rows.push([_,_,W,books[2],books[4],books[4],books[0],books[5],books[5],books[1],books[1],books[3],books[3],W,_,_]);
+  rows.push([_,_,W,books[2],books[4],books[4],books[0],books[5],books[5],books[1],books[1],books[3],books[3],W,_,_]);
+  rows.push([_,_,W,S,S,S,S,S,S,S,S,S,S,W,_,_]);
+  // Shelf 3
+  rows.push([_,_,W,books[5],books[3],books[1],books[1],books[4],books[4],books[0],books[2],books[2],books[5],W,_,_]);
+  rows.push([_,_,W,books[5],books[3],books[1],books[1],books[4],books[4],books[0],books[2],books[2],books[5],W,_,_]);
+  rows.push([_,_,W,S,S,S,S,S,S,S,S,S,S,W,_,_]);
+  rows.push([_,_,W,W,W,W,W,W,W,W,W,W,W,W,_,_]);
+  // Legs
+  rows.push([_,_,W,_,_,_,_,_,_,_,_,_,_,W,_,_]);
+  rows.push([_,_,W,_,_,_,_,_,_,_,_,_,_,W,_,_]);
+  rows.push(Array(16).fill(''));
+  rows.push(Array(16).fill(''));
+  return rows;
+})();
+
+// Ping pong table 32x32 (2x2 tiles) — top-down view, green surface with white net
+const PING_PONG = (() => {
+  const F='#1a6830', L='#22843e', D='#145224', N='#FFFFFF', W='#6B4E0A', Lg='#8B6914';
+  const r = [];
+  // Top edge
+  r.push(Array(32).fill(''));
+  r.push([_,W,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,W,_]);
+  // Top half
+  for (let i = 0; i < 6; i++) {
+    const fill = i % 2 === 0 ? F : L;
+    r.push([_,W,D,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,D,W,_]);
+  }
+  // White line border
+  r.push([_,W,D,F,F,F,F,F,F,F,F,F,F,F,F,N,N,F,F,F,F,F,F,F,F,F,F,F,F,D,W,_]);
+  // Net (center line)
+  r.push([_,W,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,W,_]);
+  r.push([_,W,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,W,_]);
+  // White line border
+  r.push([_,W,D,F,F,F,F,F,F,F,F,F,F,F,F,N,N,F,F,F,F,F,F,F,F,F,F,F,F,D,W,_]);
+  // Bottom half
+  for (let i = 0; i < 6; i++) {
+    const fill = i % 2 === 0 ? F : L;
+    r.push([_,W,D,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,D,W,_]);
+  }
+  // Bottom edge
+  r.push([_,W,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,Lg,W,_]);
+  // Legs
+  r.push([_,W,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,W,_]);
+  r.push([_,W,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,W,_]);
+  r.push([_,W,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,W,_]);
+  r.push([_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_]);
+  // Pad to 32 rows
+  while (r.length < 32) r.push(Array(32).fill(''));
+  return r;
+})();
+
+// Pool/billiards table 32x32 (2x2 tiles) — top-down view, green felt with balls
+const POOL_TABLE = (() => {
+  const F='#0a5c2a', L='#0c6e32', D='#084a22', W='#5a3a1a', R='#8B5E3C';
+  const Y='#CCAA33', Re='#CC3333', Bl='#3355AA', Pu='#7733AA', Or='#DD6622', Bk='#222222';
+  const r = [];
+  r.push(Array(32).fill(''));
+  // Top rail
+  r.push([_,R,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,R,_]);
+  r.push([_,W,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,W,_]);
+  // Pocket + felt
+  r.push([_,W,R,Bk,D,F,F,F,F,F,F,F,F,F,F,F,Bk,F,F,F,F,F,F,F,F,F,F,F,Bk,R,W,_]);
+  // Felt rows with balls
+  for (let i = 0; i < 5; i++) {
+    const fill = i % 2 === 0 ? F : L;
+    r.push([_,W,R,D,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,D,R,W,_]);
+  }
+  // Ball triangle area
+  r.push([_,W,R,D,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,Y,F,F,F,F,F,F,D,R,W,_]);
+  r.push([_,W,R,D,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,Re,Bl,F,F,F,F,F,F,D,R,W,_]);
+  r.push([_,W,R,D,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,Pu,Or,Bk,F,F,F,F,F,F,D,R,W,_]);
+  // Cue ball
+  r.push([_,W,R,D,F,F,F,F,F,F,'#EEE',F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,D,R,W,_]);
+  // More felt
+  for (let i = 0; i < 5; i++) {
+    const fill = i % 2 === 0 ? L : F;
+    r.push([_,W,R,D,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,fill,D,R,W,_]);
+  }
+  // Bottom pocket + rail
+  r.push([_,W,R,Bk,D,F,F,F,F,F,F,F,F,F,F,F,Bk,F,F,F,F,F,F,F,F,F,F,F,Bk,R,W,_]);
+  r.push([_,W,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,W,_]);
+  r.push([_,R,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,R,_]);
+  // Legs
+  r.push([_,W,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,W,_]);
+  r.push([_,W,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,W,_]);
+  r.push(Array(32).fill(''));
+  // Pad to 32 rows
+  while (r.length < 32) r.push(Array(32).fill(''));
+  return r;
+})();
+
+// Decoration placement (computed after layout)
+let decorations = []; // [{type, col, row, sprite}]
+
+function placeDecorations() {
+  decorations = [];
+  if (zones.length === 0) return;
+
+  // Use a seeded random for consistent placement
+  let seed = zones.length * 7 + COLS * 13 + ROWS * 3;
+  const rand = () => { seed = (seed * 16807 + 0) % 2147483647; return (seed - 1) / 2147483646; };
+
+  const occupied = new Set();
+  // Mark zone areas and desks as occupied
+  for (const z of zones) {
+    for (let r = z.y; r < z.y + z.h; r++) {
+      for (let c = z.x; c < z.x + z.w; c++) {
+        occupied.add(`${c},${r}`);
+      }
+    }
+  }
+
+  const smallDecorSprites = [
+    { sprite: PLANT, w: 1, h: 1, wallOnly: false },
+    { sprite: COOLER, w: 1, h: 1, wallOnly: false },
+    { sprite: BOOKSHELF, w: 1, h: 1, wallOnly: true },
+  ];
+
+  const bigDecorSprites = [
+    { sprite: PING_PONG, w: 2, h: 2 },
+    { sprite: POOL_TABLE, w: 2, h: 2 },
+  ];
+
+  // Place whiteboards along top wall (row 1, needs 2 tiles wide)
+  const wbCandidates = [];
+  for (let c = 1; c < COLS - 2; c++) {
+    if (!occupied.has(`${c},1`) && !occupied.has(`${c+1},1`)) {
+      wbCandidates.push(c);
+    }
+  }
+  // Place up to 2 whiteboards
+  for (let i = 0; i < Math.min(2, wbCandidates.length); i++) {
+    const idx = Math.floor(rand() * wbCandidates.length);
+    const c = wbCandidates.splice(idx, 1)[0];
+    decorations.push({ type: 'whiteboard', col: c, row: 1, sprite: WHITEBOARD, w: 2, h: 1 });
+    occupied.add(`${c},1`);
+    occupied.add(`${c+1},1`);
+    // Remove adjacent candidates
+    const remove = wbCandidates.indexOf(c - 1);
+    if (remove >= 0) wbCandidates.splice(remove, 1);
+    const remove2 = wbCandidates.indexOf(c + 1);
+    if (remove2 >= 0) wbCandidates.splice(remove2, 1);
+  }
+
+  // Place big tables (ping pong, pool) — need 2x2 free space away from zones
+  function canPlace2x2(c, r) {
+    for (let dr = 0; dr < 2; dr++) {
+      for (let dc = 0; dc < 2; dc++) {
+        if (occupied.has(`${c+dc},${r+dr}`)) return false;
+        if (c+dc >= COLS - 1 || r+dr >= ROWS - 1) return false;
+        if (c+dc <= 0 || r+dr <= 0) return false;
+      }
+    }
+    return true;
+  }
+
+  const bigCandidates = [];
+  for (let r = 2; r < ROWS - 3; r++) {
+    for (let c = 2; c < COLS - 3; c++) {
+      if (canPlace2x2(c, r)) bigCandidates.push({ col: c, row: r });
+    }
+  }
+  // Shuffle big candidates
+  for (let i = bigCandidates.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [bigCandidates[i], bigCandidates[j]] = [bigCandidates[j], bigCandidates[i]];
+  }
+
+  // Place up to 1 big table (only if enough room — at least 2 zones)
+  const numBigTables = zones.length >= 2 && bigCandidates.length > 0 ? 1 : 0;
+  for (let i = 0; i < numBigTables; i++) {
+    const spot = bigCandidates[i];
+    const decor = bigDecorSprites[Math.floor(rand() * bigDecorSprites.length)];
+    decorations.push({ type: 'bigtable', col: spot.col, row: spot.row, sprite: decor.sprite, w: 2, h: 2 });
+    for (let dr = 0; dr < 2; dr++) {
+      for (let dc = 0; dc < 2; dc++) {
+        occupied.add(`${spot.col+dc},${spot.row+dr}`);
+      }
+    }
+  }
+
+  // Place small decorations along walls and in corners
+  const candidates = [];
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (!occupied.has(`${c},${r}`)) {
+        const isWallAdjacent = r <= 2 || r >= ROWS - 2 || c <= 1 || c >= COLS - 2;
+        candidates.push({ col: c, row: r, wallAdj: isWallAdjacent });
+      }
+    }
+  }
+
+  // Shuffle and place decorations
+  const numDecorations = Math.min(Math.floor(2 + zones.length * 1.5), candidates.length, 12);
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  // Prefer wall-adjacent spots first
+  candidates.sort((a, b) => (b.wallAdj ? 1 : 0) - (a.wallAdj ? 1 : 0));
+
+  let placed = 0;
+  for (const spot of candidates) {
+    if (placed >= numDecorations) break;
+    const decor = smallDecorSprites[Math.floor(rand() * smallDecorSprites.length)];
+    if (decor.wallOnly && !spot.wallAdj) continue;
+    decorations.push({ type: 'decor', col: spot.col, row: spot.row, sprite: decor.sprite, w: decor.w, h: decor.h });
+    occupied.add(`${spot.col},${spot.row}`);
+    placed++;
+  }
+}
+
 // Desk sprite 32x32
 const DESK = (() => {
   const W='#8B6914',L='#A07828',Sf='#B8922E',D='#6B4E0A';
@@ -363,7 +866,89 @@ const BUBBLE_CHECK = [
 ];
 
 // ================================================================
-// SPRITE CACHE
+// MATRIX SPAWN/DESPAWN EFFECT
+// ================================================================
+const MATRIX_DURATION = 0.3;
+const MATRIX_TRAIL_LENGTH = 6;
+const MATRIX_HEAD_COLOR = '#ccffcc';
+const MATRIX_TRAIL_COLORS = [
+  'rgba(0,255,65,0.7)', 'rgba(0,255,65,0.55)', 'rgba(0,200,40,0.4)',
+  'rgba(0,170,30,0.3)', 'rgba(0,120,20,0.2)', 'rgba(0,85,15,0.1)',
+];
+
+function matrixFlicker(col, row, time) {
+  const hash = (col * 7 + row * 13 + Math.floor(time * 20) * 3) & 0xFF;
+  return hash > 77;
+}
+
+function renderMatrixEffect(ctx, ch, ox, oy, zoom) {
+  const pal = PALETTES[ch.palette];
+  const bt = BODY_TYPES[ch.bodyType] || BODY_TYPES[0];
+  const tpl = ch.state === 'type' ? bt.type1 : bt.walk2;
+  const data = resolveVariant(tpl, pal);
+  const rows = data.length, cols = data[0].length;
+  const progress = Math.min(ch.matrixEffectTimer / MATRIX_DURATION, 1);
+  const isSpawn = ch.matrixEffect === 'spawn';
+  const sittingOff = ch.state === 'type' ? 6 : 0;
+  const baseX = Math.round(ox + ch.x * zoom - (cols * zoom) / 2);
+  const baseY = Math.round(oy + (ch.y + sittingOff) * zoom - rows * zoom);
+
+  for (let c = 0; c < cols; c++) {
+    const stagger = ch.matrixEffectSeeds[c % ch.matrixEffectSeeds.length];
+    const colProgress = Math.max(0, Math.min((progress - stagger) / (1 - stagger), 1));
+    const headRow = Math.floor(colProgress * (rows + MATRIX_TRAIL_LENGTH));
+
+    for (let r = 0; r < rows; r++) {
+      const px = baseX + c * zoom;
+      const py = baseY + r * zoom;
+      const color = data[r][c];
+      const distFromHead = headRow - r;
+
+      if (isSpawn) {
+        // Spawn: head sweeps down, revealing character above
+        if (r < headRow - MATRIX_TRAIL_LENGTH && color) {
+          // Revealed: show actual sprite pixel
+          if (matrixFlicker(c, r, ch.matrixEffectTimer)) {
+            ctx.fillStyle = color;
+            ctx.fillRect(px, py, zoom, zoom);
+          }
+        } else if (distFromHead >= 0 && distFromHead <= MATRIX_TRAIL_LENGTH) {
+          // Trail/head zone
+          if (distFromHead === 0) {
+            ctx.fillStyle = MATRIX_HEAD_COLOR;
+          } else {
+            ctx.fillStyle = MATRIX_TRAIL_COLORS[Math.min(distFromHead - 1, MATRIX_TRAIL_COLORS.length - 1)];
+          }
+          if (matrixFlicker(c, r, ch.matrixEffectTimer)) {
+            ctx.fillRect(px, py, zoom, zoom);
+          }
+        }
+      } else {
+        // Despawn: head sweeps down, consuming character
+        if (r >= headRow - MATRIX_TRAIL_LENGTH && r < headRow && color) {
+          // Trail overlays remaining sprite
+          const trailIdx = headRow - r - 1;
+          ctx.fillStyle = MATRIX_TRAIL_COLORS[Math.min(trailIdx, MATRIX_TRAIL_COLORS.length - 1)];
+          if (matrixFlicker(c, r, ch.matrixEffectTimer)) {
+            ctx.fillRect(px, py, zoom, zoom);
+          }
+        } else if (r === headRow) {
+          ctx.fillStyle = MATRIX_HEAD_COLOR;
+          if (matrixFlicker(c, r, ch.matrixEffectTimer)) {
+            ctx.fillRect(px, py, zoom, zoom);
+          }
+        } else if (r > headRow && color) {
+          // Below head: still visible
+          ctx.fillStyle = color;
+          ctx.fillRect(px, py, zoom, zoom);
+        }
+      }
+    }
+  }
+}
+
+// ================================================================
+// SPRITE CACHE (fallback: pixel-by-pixel from arrays)
 // ================================================================
 const spriteCache = new Map();
 function renderSprite(data, zoom) {
@@ -383,6 +968,112 @@ function renderSprite(data, zoom) {
   spriteCache.set(key, cv);
   return cv;
 }
+
+// ================================================================
+// PNG SPRITE SHEET SYSTEM
+// ================================================================
+// Frame indices in the sprite sheet (columns)
+const SHEET_FRAMES = { walk1: 0, walk2: 1, type1: 2, type2: 3, read1: 4, read2: 5, idle: 6 };
+const SHEET_FRAME_W = 16;
+const SHEET_FRAME_H = 24;
+const SHEET_COLS = 7;
+
+// Loaded sprite sheet images
+const spriteSheets = {
+  characters: null,  // combined sheet: 112 x 144
+  desk: null,        // 32 x 32
+  pc: null,          // 16 x 16
+  bubble_perm: null,  // 11 x 13
+  bubble_check: null, // 11 x 13
+};
+let usePngSprites = false;
+
+// Cache for scaled PNG sprite frames
+const pngSpriteCache = new Map();
+
+function loadSpriteSheet(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load ${url}`));
+    img.src = url;
+  });
+}
+
+async function loadAllSpriteSheets() {
+  try {
+    const [chars, desk, pc, bp, bc] = await Promise.all([
+      loadSpriteSheet('/sprites/characters.png'),
+      loadSpriteSheet('/sprites/desk.png'),
+      loadSpriteSheet('/sprites/pc.png'),
+      loadSpriteSheet('/sprites/bubble_perm.png'),
+      loadSpriteSheet('/sprites/bubble_check.png'),
+    ]);
+    spriteSheets.characters = chars;
+    spriteSheets.desk = desk;
+    spriteSheets.pc = pc;
+    spriteSheets.bubble_perm = bp;
+    spriteSheets.bubble_check = bc;
+    usePngSprites = true;
+    console.log('PNG sprite sheets loaded successfully');
+  } catch (e) {
+    console.warn('PNG sprites not available, using fallback:', e.message);
+    usePngSprites = false;
+  }
+}
+
+// Render a frame from the character sprite sheet, scaled to zoom
+// Sheet layout: 7 columns × (PALETTES × BODY_TYPES) rows
+function renderCharFrame(paletteIdx, bodyTypeIdx, frameKey, zoom) {
+  const cacheKey = `char_${paletteIdx}_${bodyTypeIdx}_${frameKey}_${zoom}`;
+  if (pngSpriteCache.has(cacheKey)) return pngSpriteCache.get(cacheKey);
+
+  const frameCol = SHEET_FRAMES[frameKey];
+  const sx = frameCol * SHEET_FRAME_W;
+  const sy = (paletteIdx * NUM_BODY_TYPES + bodyTypeIdx) * SHEET_FRAME_H;
+  const dw = SHEET_FRAME_W * zoom;
+  const dh = SHEET_FRAME_H * zoom;
+
+  const cv = new OffscreenCanvas(dw, dh);
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(spriteSheets.characters, sx, sy, SHEET_FRAME_W, SHEET_FRAME_H, 0, 0, dw, dh);
+
+  pngSpriteCache.set(cacheKey, cv);
+  return cv;
+}
+
+// Render a full PNG image scaled to zoom
+function renderPngSprite(img, zoom) {
+  const cacheKey = `png_${img.src}_${zoom}`;
+  if (pngSpriteCache.has(cacheKey)) return pngSpriteCache.get(cacheKey);
+
+  const dw = img.width * zoom;
+  const dh = img.height * zoom;
+  const cv = new OffscreenCanvas(dw, dh);
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(img, 0, 0, dw, dh);
+
+  pngSpriteCache.set(cacheKey, cv);
+  return cv;
+}
+
+// Get the frame key for a character based on state
+function getCharFrameKey(ch) {
+  if (ch.state === 'type') {
+    const isReading = ch.currentTool && READING_TOOLS.has(ch.currentTool);
+    if (isReading) return ch.frame === 0 ? 'read1' : 'read2';
+    return ch.frame === 0 ? 'type1' : 'type2';
+  }
+  if (ch.state === 'walk') {
+    return [ch.frame % 2 === 0 ? 'walk1' : 'walk2'][0];
+  }
+  return 'idle';
+}
+
+// Start loading sprites immediately
+loadAllSpriteSheets();
 
 // ================================================================
 // PROJECT ZONE COLORS
@@ -506,22 +1197,115 @@ function computeLayout() {
 }
 
 // ================================================================
+// WALKABILITY GRID & BFS PATHFINDING
+// ================================================================
+let tileWalkable = [];
+
+function buildWalkabilityGrid() {
+  tileWalkable = Array.from({length: ROWS}, () => Array(COLS).fill(true));
+  // Block wall tiles (row 0 and col 0)
+  for (let c = 0; c < COLS; c++) tileWalkable[0][c] = false;
+  for (let r = 0; r < ROWS; r++) tileWalkable[r][0] = false;
+  // Block desk areas
+  for (const ch of characters.values()) {
+    for (let dr = 0; dr < 2; dr++) {
+      for (let dc = 0; dc < 2; dc++) {
+        const c = ch.deskCol + dc, r = ch.deskRow + dr;
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+          tileWalkable[r][c] = false;
+        }
+      }
+    }
+  }
+  // Block decoration tiles
+  for (const d of decorations) {
+    for (let dr = 0; dr < (d.h || 1); dr++) {
+      for (let dc = 0; dc < (d.w || 1); dc++) {
+        const c = d.col + dc, r = d.row + dr;
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+          tileWalkable[r][c] = false;
+        }
+      }
+    }
+  }
+}
+
+function findPath(startCol, startRow, endCol, endRow) {
+  // Clamp to grid bounds
+  startCol = Math.max(0, Math.min(COLS - 1, Math.round(startCol)));
+  startRow = Math.max(0, Math.min(ROWS - 1, Math.round(startRow)));
+  endCol = Math.max(0, Math.min(COLS - 1, Math.round(endCol)));
+  endRow = Math.max(0, Math.min(ROWS - 1, Math.round(endRow)));
+
+  if (startCol === endCol && startRow === endRow) return [];
+  const key = (c, r) => (c << 16) | r;
+  const visited = new Set([key(startCol, startRow)]);
+  const parent = new Map();
+  const queue = [{col: startCol, row: startRow}];
+  const dirs = [{dc:0,dr:-1},{dc:0,dr:1},{dc:-1,dr:0},{dc:1,dr:0}];
+  let head = 0;
+
+  while (head < queue.length) {
+    const curr = queue[head++];
+    if (curr.col === endCol && curr.row === endRow) {
+      const path = [];
+      let k = key(endCol, endRow);
+      const startKey = key(startCol, startRow);
+      while (k !== startKey) {
+        const c = k >> 16, r = k & 0xFFFF;
+        path.unshift({col: c, row: r});
+        k = parent.get(k);
+      }
+      return path;
+    }
+    for (const d of dirs) {
+      const nc = curr.col + d.dc, nr = curr.row + d.dr;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      const nk = key(nc, nr);
+      if (visited.has(nk)) continue;
+      // Allow walking to destination even if blocked (desk seat)
+      if (!tileWalkable[nr][nc] && !(nc === endCol && nr === endRow)) continue;
+      visited.add(nk);
+      parent.set(nk, key(curr.col, curr.row));
+      queue.push({col: nc, row: nr});
+    }
+  }
+  return []; // no path found
+}
+
+function randomWalkableTile() {
+  const candidates = [];
+  for (let r = 2; r < ROWS - 2; r++) {
+    for (let c = 2; c < COLS - 2; c++) {
+      if (tileWalkable[r][c]) candidates.push({col: c, row: r});
+    }
+  }
+  if (candidates.length === 0) return {col: 3, row: 3};
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+// ================================================================
 // CHARACTER MANAGEMENT
 // ================================================================
 function createChar(session, deskCol, deskRow, idx) {
-  const px = (deskCol + 1) * TILE;
-  const py = (deskRow + 2) * TILE;
+  const seatCol = deskCol + 1;
+  const seatRow = deskRow + 2;
   return {
     id: session.id,
     palette: idx % PALETTES.length,
-    x: px, y: py,
-    targetX: px, targetY: py,
+    bodyType: Math.floor(idx / PALETTES.length) % NUM_BODY_TYPES,
+    x: seatCol * TILE, y: seatRow * TILE,
+    tileCol: seatCol, tileRow: seatRow,
+    path: [], moveProgress: 0,
     deskCol, deskRow,
     state: 'type',
     frame: 0, frameTimer: 0,
     wanderTimer: 5 + Math.random() * 15,
     isActive: true,
+    currentTool: null,
     bubbleType: null, bubbleTimer: 0,
+    matrixEffect: 'spawn', matrixEffectTimer: 0,
+    matrixEffectSeeds: Array.from({length: 16}, () => Math.random() * 0.15),
   };
 }
 
@@ -529,8 +1313,16 @@ function syncCharacters() {
   computeLayout();
   const activeIds = new Set(sessions.map(s => s.id));
 
-  for (const id of characters.keys()) {
-    if (!activeIds.has(id)) characters.delete(id);
+  for (const [id, ch] of characters.entries()) {
+    if (!activeIds.has(id)) {
+      if (ch.matrixEffect === 'despawn') {
+        if (ch.matrixEffectTimer >= MATRIX_DURATION) characters.delete(id);
+      } else {
+        ch.matrixEffect = 'despawn';
+        ch.matrixEffectTimer = 0;
+        ch.matrixEffectSeeds = Array.from({length: 16}, () => Math.random() * 0.15);
+      }
+    }
   }
 
   let globalIdx = 0;
@@ -547,14 +1339,16 @@ function syncCharacters() {
       // Update desk (may shift if layout recalculated)
       ch.deskCol = desk.col;
       ch.deskRow = desk.row;
+      ch.currentTool = s.currentTool || null;
 
       const wasActive = ch.isActive;
       ch.isActive = ['working', 'thinking', 'needs_permission'].includes(s.state);
 
       if (ch.isActive && !wasActive) {
-        ch.targetX = (ch.deskCol + 1) * TILE;
-        ch.targetY = (ch.deskRow + 2) * TILE;
-        ch.state = 'walk';
+        const seatCol = ch.deskCol + 1, seatRow = ch.deskRow + 2;
+        ch.path = findPath(ch.tileCol, ch.tileRow, seatCol, seatRow);
+        ch.moveProgress = 0;
+        ch.state = ch.path.length > 0 ? 'walk' : 'type';
       }
       if (!ch.isActive && wasActive && ch.state === 'type') {
         ch.state = 'idle';
@@ -574,6 +1368,8 @@ function syncCharacters() {
       globalIdx++;
     }
   }
+  placeDecorations();
+  buildWalkabilityGrid();
 }
 
 // ================================================================
@@ -581,41 +1377,68 @@ function syncCharacters() {
 // ================================================================
 function update(dt) {
   for (const ch of characters.values()) {
+    // Matrix effect takes priority over all other state
+    if (ch.matrixEffect) {
+      ch.matrixEffectTimer += dt;
+      if (ch.matrixEffect === 'spawn' && ch.matrixEffectTimer >= MATRIX_DURATION) {
+        ch.matrixEffect = null;
+      }
+      continue;
+    }
+
     ch.frameTimer += dt;
 
     if (ch.state === 'type') {
-      if (ch.frameTimer > 0.3) { ch.frameTimer = 0; ch.frame = (ch.frame + 1) % 2; }
+      const isReading = ch.currentTool && READING_TOOLS.has(ch.currentTool);
+      const frameDur = isReading ? 0.8 : 0.3;
+      if (ch.frameTimer > frameDur) { ch.frameTimer = 0; ch.frame = (ch.frame + 1) % 2; }
       if (!ch.isActive) { ch.state = 'idle'; ch.wanderTimer = 2 + Math.random() * 8; }
     }
     else if (ch.state === 'idle') {
       ch.frame = 0;
       if (ch.isActive) {
-        ch.targetX = (ch.deskCol + 1) * TILE;
-        ch.targetY = (ch.deskRow + 2) * TILE;
-        ch.state = 'walk';
+        const seatCol = ch.deskCol + 1, seatRow = ch.deskRow + 2;
+        ch.path = findPath(ch.tileCol, ch.tileRow, seatCol, seatRow);
+        ch.moveProgress = 0;
+        ch.state = ch.path.length > 0 ? 'walk' : 'type';
       } else {
         ch.wanderTimer -= dt;
         if (ch.wanderTimer <= 0) {
-          // Wander freely across the whole floor
-          ch.targetX = (2 + Math.random() * (COLS - 4)) * TILE;
-          ch.targetY = (2 + Math.random() * (ROWS - 4)) * TILE;
-          ch.state = 'walk';
+          const target = randomWalkableTile();
+          ch.path = findPath(ch.tileCol, ch.tileRow, target.col, target.row);
+          ch.moveProgress = 0;
+          if (ch.path.length > 0) ch.state = 'walk';
           ch.wanderTimer = 5 + Math.random() * 20;
         }
       }
     }
     else if (ch.state === 'walk') {
       if (ch.frameTimer > 0.15) { ch.frameTimer = 0; ch.frame = (ch.frame + 1) % 4; }
-      const dx = ch.targetX - ch.x, dy = ch.targetY - ch.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 2) {
-        ch.x = ch.targetX; ch.y = ch.targetY;
+
+      if (ch.path.length === 0) {
+        ch.x = ch.tileCol * TILE;
+        ch.y = ch.tileRow * TILE;
         ch.state = ch.isActive ? 'type' : 'idle';
         ch.frame = 0;
       } else {
-        const speed = 48 * dt;
-        ch.x += (dx / dist) * speed;
-        ch.y += (dy / dist) * speed;
+        const next = ch.path[0];
+        const speed = 3; // tiles per second
+        ch.moveProgress += speed * dt;
+
+        const fromX = ch.tileCol * TILE;
+        const fromY = ch.tileRow * TILE;
+        const toX = next.col * TILE;
+        const toY = next.row * TILE;
+        const t = Math.min(ch.moveProgress, 1);
+        ch.x = fromX + (toX - fromX) * t;
+        ch.y = fromY + (toY - fromY) * t;
+
+        if (ch.moveProgress >= 1) {
+          ch.tileCol = next.col;
+          ch.tileRow = next.row;
+          ch.path.shift();
+          ch.moveProgress = 0;
+        }
       }
     }
 
@@ -637,23 +1460,40 @@ function render(ctx, w, h) {
   const ox = Math.floor((w - mapW) / 2) + panX;
   const oy = Math.floor((h - mapH) / 2) + panY;
 
-  // Main floor
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(ox, oy, mapW, mapH);
+  // Checkerboard floor
+  const tz = TILE * zoom;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? FLOOR_A : FLOOR_B;
+      ctx.fillRect(ox + c * tz, oy + r * tz, tz, tz);
+    }
+  }
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  // Walls — top wall (row 0)
+  const wallTopSprite = renderSprite(WALL_TOP, zoom);
+  for (let c = 0; c < COLS; c++) {
+    ctx.drawImage(wallTopSprite, ox + c * tz, oy);
+  }
+
+  // Walls — left wall (col 0)
+  const wallSideSprite = renderSprite(WALL_SIDE, zoom);
+  for (let r = 1; r < ROWS; r++) {
+    ctx.drawImage(wallSideSprite, ox, oy + r * tz);
+  }
+
+  // Grid lines (subtle, over floor)
+  ctx.strokeStyle = 'rgba(255,255,255,0.02)';
   ctx.lineWidth = 1;
-  for (let c = 0; c <= COLS; c++) {
+  for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
-    ctx.moveTo(ox + c * TILE * zoom + 0.5, oy);
-    ctx.lineTo(ox + c * TILE * zoom + 0.5, oy + mapH);
+    ctx.moveTo(ox + c * tz + 0.5, oy + tz);
+    ctx.lineTo(ox + c * tz + 0.5, oy + mapH);
     ctx.stroke();
   }
-  for (let r = 0; r <= ROWS; r++) {
+  for (let r = 1; r < ROWS; r++) {
     ctx.beginPath();
-    ctx.moveTo(ox, oy + r * TILE * zoom + 0.5);
-    ctx.lineTo(ox + mapW, oy + r * TILE * zoom + 0.5);
+    ctx.moveTo(ox + tz, oy + r * tz + 0.5);
+    ctx.lineTo(ox + mapW, oy + r * tz + 0.5);
     ctx.stroke();
   }
 
@@ -702,10 +1542,19 @@ function render(ctx, w, h) {
   // Collect drawables for z-sort
   const drawables = [];
 
+  // Decorations
+  for (const d of decorations) {
+    const sprite = renderSprite(d.sprite, zoom);
+    const dx = ox + d.col * tz;
+    const dy = oy + d.row * tz;
+    const zY = d.row * TILE + (d.h || 1) * TILE;
+    drawables.push({ zY, draw: () => ctx.drawImage(sprite, dx, dy) });
+  }
+
   // Desks + PCs
   for (const ch of characters.values()) {
-    const deskSprite = renderSprite(DESK, zoom);
-    const pcSprite = renderSprite(PC, zoom);
+    const deskSprite = usePngSprites ? renderPngSprite(spriteSheets.desk, zoom) : renderSprite(DESK, zoom);
+    const pcSprite = usePngSprites ? renderPngSprite(spriteSheets.pc, zoom) : renderSprite(PC, zoom);
     const dx = ox + ch.deskCol * TILE * zoom;
     const dy = oy + ch.deskRow * TILE * zoom;
     drawables.push({ zY: ch.deskRow * TILE + 32, draw: () => ctx.drawImage(deskSprite, dx, dy) });
@@ -716,16 +1565,36 @@ function render(ctx, w, h) {
 
   // Characters
   for (const ch of characters.values()) {
-    const pal = PALETTES[ch.palette];
-    let tpl;
-    if (ch.state === 'type') {
-      tpl = ch.frame === 0 ? TD1 : TD2;
-    } else if (ch.state === 'walk') {
-      tpl = [WD1, WD2, WD1, WD2][ch.frame % 4];
-    } else {
-      tpl = WD2;
+    // Matrix effect: render separately
+    if (ch.matrixEffect) {
+      const capturedCh = ch;
+      drawables.push({
+        zY: ch.y + TILE / 2,
+        draw: () => renderMatrixEffect(ctx, capturedCh, ox, oy, zoom),
+      });
+      continue;
     }
-    const sprite = renderSprite(resolve(tpl, pal), zoom);
+
+    let sprite;
+    if (usePngSprites) {
+      const frameKey = getCharFrameKey(ch);
+      sprite = renderCharFrame(ch.palette, ch.bodyType, frameKey, zoom);
+    } else {
+      const pal = PALETTES[ch.palette];
+      const bt = BODY_TYPES[ch.bodyType] || BODY_TYPES[0];
+      let tpl;
+      if (ch.state === 'type') {
+        const isReading = ch.currentTool && READING_TOOLS.has(ch.currentTool);
+        tpl = isReading
+          ? (ch.frame === 0 ? bt.read1 : bt.read2)
+          : (ch.frame === 0 ? bt.type1 : bt.type2);
+      } else if (ch.state === 'walk') {
+        tpl = [bt.walk1, bt.walk2, bt.walk1, bt.walk2][ch.frame % 4];
+      } else {
+        tpl = bt.walk2;
+      }
+      sprite = renderSprite(resolveVariant(tpl, pal), zoom);
+    }
     const sittingOff = ch.state === 'type' ? 6 : 0;
     const sx = Math.round(ox + ch.x * zoom - sprite.width / 2);
     const sy = Math.round(oy + (ch.y + sittingOff) * zoom - sprite.height);
@@ -766,7 +1635,9 @@ function render(ctx, w, h) {
     });
 
     if (ch.bubbleType) {
-      const bSprite = renderSprite(ch.bubbleType === 'permission' ? BUBBLE_PERM : BUBBLE_CHECK, zoom);
+      const bSprite = usePngSprites
+        ? renderPngSprite(ch.bubbleType === 'permission' ? spriteSheets.bubble_perm : spriteSheets.bubble_check, zoom)
+        : renderSprite(ch.bubbleType === 'permission' ? BUBBLE_PERM : BUBBLE_CHECK, zoom);
       const bx = Math.round(ox + ch.x * zoom - bSprite.width / 2);
       const by = Math.round(oy + (ch.y + sittingOff - 28) * zoom - bSprite.height);
       drawables.push({
@@ -1074,6 +1945,58 @@ function updateCookie() {
 
 
 // ================================================================
+// NEW AGENT
+// ================================================================
+function openNewAgentModal() {
+  const modal = document.getElementById('newAgentModal');
+  modal.classList.add('open');
+  document.getElementById('newAgentCustomDir').value = '';
+  document.getElementById('newAgentPrompt').value = '';
+  // Load projects
+  fetch('/api/projects').then(r => r.json()).then(projects => {
+    const select = document.getElementById('newAgentProject');
+    select.innerHTML = '<option value="">-- Seleccionar proyecto --</option>';
+    for (const p of projects) {
+      const opt = document.createElement('option');
+      opt.value = p.cwd;
+      opt.textContent = `${p.project} (${p.cwd.replace(/^\/Users\/[^/]+/, '~')})`;
+      select.appendChild(opt);
+    }
+  }).catch(() => {});
+}
+
+function closeNewAgentModal() {
+  document.getElementById('newAgentModal').classList.remove('open');
+}
+
+function launchNewAgent() {
+  const select = document.getElementById('newAgentProject');
+  const customDir = document.getElementById('newAgentCustomDir').value.trim();
+  const prompt = document.getElementById('newAgentPrompt').value.trim();
+  const cwd = customDir || select.value;
+
+  if (!cwd) {
+    alert('Selecciona un proyecto o ingresa una ruta');
+    return;
+  }
+
+  fetch('/api/new-agent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cwd, prompt: prompt || undefined }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      closeNewAgentModal();
+    } else {
+      alert('Error: ' + (data.error || 'desconocido'));
+    }
+  })
+  .catch(() => alert('Error de conexion'));
+}
+
+// ================================================================
 // NOTIFICATIONS
 // ================================================================
 function playChime() {
@@ -1125,6 +2048,7 @@ if (localStorage.getItem('soundEnabled') === 'true') {
 function changeZoom(d) {
   zoom = Math.max(1, Math.min(8, zoom + d));
   spriteCache.clear();
+  pngSpriteCache.clear();
 }
 
 // ================================================================

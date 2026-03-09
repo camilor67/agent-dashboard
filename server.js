@@ -544,6 +544,71 @@ const server = http.createServer((req, res) => {
   } else if (req.url === '/api/sessions') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getAllSessions()));
+  } else if (req.url === '/api/projects') {
+    // Return unique project directories from known sessions
+    const sessions = getAllSessions();
+    const dirs = new Map();
+    for (const s of sessions) {
+      if (s.cwd) {
+        const fullCwd = s.cwd.replace('~', HOME);
+        const project = s.project || path.basename(fullCwd);
+        if (!dirs.has(fullCwd)) {
+          dirs.set(fullCwd, project);
+        }
+      }
+    }
+    const projects = [...dirs.entries()].map(([cwd, project]) => ({ cwd, project }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(projects));
+  } else if (req.url === '/api/new-agent' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { cwd, prompt } = JSON.parse(body);
+        const targetDir = (cwd || '').replace('~', HOME);
+
+        // Validate the directory exists
+        if (!targetDir || !fs.existsSync(targetDir)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Directorio no existe: ' + targetDir }));
+          return;
+        }
+
+        const { exec } = require('child_process');
+
+        // Build the command to run in the new tab
+        const escapedDir = targetDir.replace(/'/g, "'\\''");
+        const claudeCmd = prompt
+          ? `cd '${escapedDir}' && claude '${prompt.replace(/'/g, "'\\''")}'`
+          : `cd '${escapedDir}' && claude`;
+
+        // AppleScript: open new iTerm tab and run claude
+        const script = `
+tell application "iTerm2"
+  activate
+  tell current window
+    create tab with default profile
+    tell current session of current tab
+      write text "${claudeCmd.replace(/"/g, '\\"')}"
+    end tell
+  end tell
+end tell`;
+        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+          if (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message }));
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+          }
+        });
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
   } else if (req.url === '/api/usage') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getUsageStats()));
@@ -657,6 +722,23 @@ end tell`;
       }
     });
     return;
+  } else if (req.url?.startsWith('/sprites/')) {
+    // Serve static sprite files (PNG only, from sprites/ directory)
+    const safeName = path.basename(req.url);
+    if (!safeName.endsWith('.png')) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    const filePath = path.join(__dirname, 'sprites', safeName);
+    try {
+      const data = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
   } else {
     res.writeHead(404);
     res.end('Not found');

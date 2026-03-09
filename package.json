@@ -19,5 +19,8 @@
     "monitor",
     "agent",
     "cli"
-  ]
+  ],
+  "devDependencies": {
+    "pngjs": "^7.0.0"
+  }
 }
