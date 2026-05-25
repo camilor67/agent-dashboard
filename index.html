@@ -119,6 +119,9 @@
     /* Plan usage section */
     .plan-section { margin-top: 12px; padding-top: 12px; }
     .plan-title { font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; color: #ff9e64; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .plan-group { margin-bottom: 14px; }
+    .plan-group-header { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: #ff9e64; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed #2a2f45; }
+    .plan-group-plan { color: #8890b0; font-weight: normal; letter-spacing: 0; text-transform: none; font-size: 0.65rem; }
     .plan-meter { margin-bottom: 8px; }
     .plan-meter-label { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px; }
     .plan-meter-name { color: #c0caf5; }
@@ -126,6 +129,9 @@
     .plan-meter-bar { height: 8px; background: #24283b; border-radius: 4px; overflow: hidden; }
     .plan-meter-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
     .plan-reset { font-size: 0.65rem; color: #8890b0; margin-top: 3px; }
+    .plan-extra { font-size: 0.65rem; color: #8890b0; margin-top: 6px; padding-top: 8px; border-top: 1px solid #24283b; display: flex; justify-content: space-between; align-items: center; }
+    .plan-extra-status { color: #c0caf5; }
+    .plan-updated { font-size: 0.6rem; color: #555a76; margin-top: 8px; text-align: right; }
     .controls {
       position: fixed; top: 12px; right: 440px;
       display: flex; gap: 8px; z-index: 10;
@@ -1849,11 +1855,63 @@ function timeUntil(isoDate) {
   return `${m}m`;
 }
 
+function formatReset(isoDate, mode) {
+  if (!isoDate) return '';
+  const diff = new Date(isoDate).getTime() - Date.now();
+  if (diff <= 0) return 'Reset ahora';
+  // For weekly resets show absolute day/time; for short windows show countdown.
+  if (mode === 'absolute' || diff > 24 * 3600000) {
+    const d = new Date(isoDate);
+    const days = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
+    const day = days[d.getDay()];
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mm = d.getMinutes().toString().padStart(2, '0');
+    return `Reset ${day} ${hh}:${mm}`;
+  }
+  return `Reset en ${timeUntil(isoDate)}`;
+}
+
 function meterColor(pct) {
   if (pct >= 80) return '#f7768e';
   if (pct >= 50) return '#ff9e64';
   if (pct >= 25) return '#e0af68';
   return '#9ece6a';
+}
+
+function renderMeter({ label, util, resetAt, resetMode, hint, count }) {
+  if (count) {
+    // Count-based meter (e.g. "0 / 15")
+    const used = count.used ?? 0;
+    const limit = count.limit ?? 0;
+    const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+    const color = meterColor(pct);
+    return `
+      <div class="plan-meter">
+        <div class="plan-meter-label">
+          <span class="plan-meter-name">${label}</span>
+          <span class="plan-meter-value" style="color:${color}">${used} / ${limit}</span>
+        </div>
+        <div class="plan-meter-bar">
+          <div class="plan-meter-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        ${hint ? `<div class="plan-reset">${hint}</div>` : ''}
+      </div>`;
+  }
+  const pct = Math.min(100, Math.round(util ?? 0));
+  const color = meterColor(pct);
+  const reset = resetAt ? formatReset(resetAt, resetMode) : '';
+  const sub = reset || hint || '';
+  return `
+    <div class="plan-meter">
+      <div class="plan-meter-label">
+        <span class="plan-meter-name">${label}</span>
+        <span class="plan-meter-value" style="color:${color}">${pct}%</span>
+      </div>
+      <div class="plan-meter-bar">
+        <div class="plan-meter-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      ${sub ? `<div class="plan-reset">${sub}</div>` : ''}
+    </div>`;
 }
 
 function renderPlanUsage(data) {
@@ -1868,45 +1926,84 @@ function renderPlanUsage(data) {
     return;
   }
 
-  const meters = [
-    { key: 'five_hour', label: 'Limite 5 horas', data: data.five_hour },
-    { key: 'seven_day', label: 'Limite 7 dias', data: data.seven_day },
-    { key: 'seven_day_sonnet', label: 'Sonnet (7 dias)', data: data.seven_day_sonnet },
-    { key: 'seven_day_opus', label: 'Opus (7 dias)', data: data.seven_day_opus },
-    { key: 'seven_day_cowork', label: 'Cowork (7 dias)', data: data.seven_day_cowork },
-  ];
-
   let html = `<div class="plan-title">
     PLAN CLAUDE.AI
     <span style="font-size:0.55rem;font-weight:normal;color:#8890b0;">en vivo</span>
   </div>`;
 
-  for (const m of meters) {
-    if (!m.data) continue;
-    const pct = Math.min(100, Math.round(m.data.utilization));
-    const color = meterColor(pct);
-    const reset = m.data.resets_at ? `Reset en ${timeUntil(m.data.resets_at)}` : '';
-    html += `
-      <div class="plan-meter">
-        <div class="plan-meter-label">
-          <span class="plan-meter-name">${m.label}</span>
-          <span class="plan-meter-value" style="color:${color}">${pct}%</span>
-        </div>
-        <div class="plan-meter-bar">
-          <div class="plan-meter-fill" style="width:${pct}%;background:${color}"></div>
-        </div>
-        ${reset ? `<div class="plan-reset">${reset}</div>` : ''}
-      </div>`;
-  }
-
-  // Extra usage
-  if (data.extra_usage) {
-    const eu = data.extra_usage;
-    html += `<div style="font-size:0.6rem;color:#8890b0;margin-top:6px;padding:4px 0;border-top:1px solid #24283b;">
-      Extra usage: ${eu.is_enabled ? 'Activado' : 'Desactivado'}
-      ${eu.used_credits != null ? ` — $${eu.used_credits.toFixed(2)} usado` : ''}
+  // ── Plan usage limits (current 5h session) ─────────────────
+  if (data.five_hour) {
+    html += `<div class="plan-group">
+      <div class="plan-group-header"><span>Limites del plan</span></div>
+      ${renderMeter({
+        label: 'Sesion actual',
+        util: data.five_hour.utilization,
+        resetAt: data.five_hour.resets_at,
+        resetMode: 'relative',
+      })}
     </div>`;
   }
+
+  // ── Weekly limits ──────────────────────────────────────────
+  const weeklyMeters = [];
+  if (data.seven_day) {
+    weeklyMeters.push(renderMeter({
+      label: 'Todos los modelos',
+      util: data.seven_day.utilization,
+      resetAt: data.seven_day.resets_at,
+      resetMode: 'absolute',
+    }));
+  }
+  if (data.seven_day_sonnet) {
+    weeklyMeters.push(renderMeter({
+      label: 'Solo Sonnet',
+      util: data.seven_day_sonnet.utilization,
+      resetAt: data.seven_day_sonnet.resets_at,
+      resetMode: 'absolute',
+    }));
+  }
+  if (data.seven_day_omelette) {
+    weeklyMeters.push(renderMeter({
+      label: 'Claude Design',
+      util: data.seven_day_omelette.utilization,
+      resetAt: data.seven_day_omelette.resets_at,
+      resetMode: 'absolute',
+    }));
+  }
+  if (weeklyMeters.length) {
+    html += `<div class="plan-group">
+      <div class="plan-group-header"><span>Limites semanales</span></div>
+      ${weeklyMeters.join('')}
+    </div>`;
+  }
+
+  // ── Additional features (routine runs) ─────────────────────
+  const routines = data.iguana_necktie;
+  if (routines && (routines.limit != null || routines.utilization != null)) {
+    const hasCount = routines.limit != null && routines.used != null;
+    html += `<div class="plan-group">
+      <div class="plan-group-header"><span>Caracteristicas adicionales</span></div>
+      ${renderMeter({
+        label: 'Routines diarias incluidas',
+        util: routines.utilization,
+        count: hasCount ? { used: routines.used, limit: routines.limit } : null,
+        hint: routines.resets_at ? formatReset(routines.resets_at, 'relative') : '',
+      })}
+    </div>`;
+  }
+
+  // ── Extra usage ────────────────────────────────────────────
+  if (data.extra_usage) {
+    const eu = data.extra_usage;
+    const status = eu.is_enabled ? 'Activado' : 'Desactivado';
+    const credits = eu.used_credits != null ? ` — $${eu.used_credits.toFixed(2)} usado` : '';
+    html += `<div class="plan-extra">
+      <span>Uso extra</span>
+      <span class="plan-extra-status">${status}${credits}</span>
+    </div>`;
+  }
+
+  html += `<div class="plan-updated">Actualizado hace un momento</div>`;
 
   el.innerHTML = html;
 }
@@ -1928,10 +2025,11 @@ function focusTerminal(cwd) {
 function updateCookie() {
   const cookie = prompt('Pega el cookie de claude.ai (Request Headers → Cookie):');
   if (!cookie) return;
+  const userAgent = prompt('Pega el User-Agent del mismo request (Request Headers → User-Agent).\nDejalo vacio para usar el actual.');
   fetch('/api/update-cookie', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookie }),
+    body: JSON.stringify({ cookie, userAgent }),
   })
   .then(r => r.json())
   .then(data => {

@@ -26,7 +26,9 @@ loadEnv();
 
 const CLAUDE_ORG_ID = process.env.CLAUDE_ORG_ID || '';
 const CLAUDE_SESSION_KEY = process.env.CLAUDE_SESSION_KEY || '';
-const CLAUDE_COOKIE = process.env.CLAUDE_COOKIE || '';
+let CLAUDE_COOKIE = process.env.CLAUDE_COOKIE || '';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+let CLAUDE_USER_AGENT = process.env.CLAUDE_USER_AGENT || DEFAULT_USER_AGENT;
 
 // Timer constants (inspired by pixel-agents)
 const PERMISSION_TIMER_MS = 7000;  // tool_use without result = probably waiting approval
@@ -516,9 +518,12 @@ async function fetchPlanUsage() {
         'Accept': '*/*',
         'Content-Type': 'application/json',
         'Cookie': CLAUDE_COOKIE,
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'User-Agent': CLAUDE_USER_AGENT,
         'Referer': 'https://claude.ai/settings/usage',
         'Origin': 'https://claude.ai',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
       },
     });
 
@@ -694,24 +699,32 @@ end tell`;
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        const { cookie } = JSON.parse(body);
+        const { cookie, userAgent } = JSON.parse(body);
         if (!cookie || !cookie.includes('sessionKey=')) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Cookie invalido, debe contener sessionKey' }));
           return;
         }
-        // Update .env file
         const envPath = path.join(__dirname, '.env');
-        let envContent = fs.readFileSync(envPath, 'utf-8');
+        let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
         if (envContent.includes('CLAUDE_COOKIE=')) {
           envContent = envContent.replace(/CLAUDE_COOKIE=.*/,  'CLAUDE_COOKIE=' + cookie);
         } else {
-          envContent += '\nCLAUDE_COOKIE=' + cookie;
+          envContent += (envContent.endsWith('\n') || !envContent ? '' : '\n') + 'CLAUDE_COOKIE=' + cookie + '\n';
+        }
+        if (userAgent && userAgent.trim()) {
+          const ua = userAgent.trim();
+          if (envContent.includes('CLAUDE_USER_AGENT=')) {
+            envContent = envContent.replace(/CLAUDE_USER_AGENT=.*/, 'CLAUDE_USER_AGENT=' + ua);
+          } else {
+            envContent += (envContent.endsWith('\n') ? '' : '\n') + 'CLAUDE_USER_AGENT=' + ua + '\n';
+          }
+          process.env.CLAUDE_USER_AGENT = ua;
+          CLAUDE_USER_AGENT = ua;
         }
         fs.writeFileSync(envPath, envContent);
-        // Reload in memory
         process.env.CLAUDE_COOKIE = cookie;
-        // Clear cache to force refetch
+        CLAUDE_COOKIE = cookie;
         cachedPlanUsage = null;
         planUsageFetchedAt = 0;
         res.writeHead(200, { 'Content-Type': 'application/json' });
