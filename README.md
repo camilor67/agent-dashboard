@@ -16,7 +16,7 @@ Agent Dashboard reads Claude Code's local JSONL session files (`~/.claude/projec
   - Model name (e.g. `opus-4-6`, `sonnet-4-6`)
   - Time since last activity
   - Working directory
-- **iTerm2 integration** — Click "Open in iTerm" to jump directly to the terminal session where that agent is running (matches by TTY).
+- **Warp integration** — Click "Open in Warp" to jump to the session's Warp window (matched by title, with app activation as fallback), and "New agent" to launch a fresh `claude` session in a new Warp window via a generated Launch Configuration.
 - **Claude.ai plan usage** — Shows your current plan utilization (5-hour and 7-day limits) by scraping the claude.ai usage API with your session cookie.
 - **Sound alerts** — Optional notification sound when an agent needs your attention (permission or input).
 - **WebSocket live updates** — File changes are detected instantly via chokidar and pushed to the browser.
@@ -25,8 +25,8 @@ Agent Dashboard reads Claude Code's local JSONL session files (`~/.claude/projec
 
 - **Node.js** >= 18
 - **Claude Code CLI** — must be installed and running sessions locally
-- **iTerm2** (optional) — for the "Open in iTerm" terminal navigation feature
-- **macOS** — process detection uses `ps`, `lsof`, and AppleScript (iTerm2 focus)
+- **Warp** (optional) — for the "Open in Warp" / "New agent" terminal features
+- **macOS** — process detection uses `ps` and `lsof`; terminal integration uses `open`, Warp Launch Configurations, and (for window focus) System Events, which needs Accessibility permission for the terminal that runs the server — it degrades to just activating Warp without it
 
 ## Setup
 
@@ -85,16 +85,16 @@ The dashboard analyzes JSONL session files to determine each agent's state:
 | **Completed** | Turn finished, showing last response |
 | **Needs Input** | Agent asked a question and is waiting for your reply |
 | **Needs Permission** | A tool call is pending approval (e.g. file write, bash command) |
-| **Offline** | Session is old or no claude process is running |
+| **Offline** | The last conversational turn is old and no `claude` process is running in that session's working directory |
 
-### iTerm2 terminal navigation
+State is decided from the last *conversational* JSONL entry (`user`, `assistant`, `progress`, or `system:turn_duration`) — other entry types the CLI writes (`attachment`, `system:away_summary`, `system:stop_hook_summary`, etc.) update the "last seen" timestamp shown in the UI but never flip the state on their own. Process liveness is checked per session (by matching the agent's working directory against `lsof`-reported cwds of running `claude` processes), not globally.
 
-When you click "Open in iTerm", the server:
-1. Finds the `claude` process running in the agent's working directory via `ps` + `lsof`
-2. Gets its TTY (e.g. `/dev/ttys005`)
-3. Uses AppleScript to search all iTerm2 windows/tabs/sessions for that TTY and focuses it
+### Warp terminal integration
 
-This requires iTerm2 and macOS accessibility permissions for `osascript`.
+- **"Open in Warp"** (`POST /api/focus-terminal`) — Warp has no AppleScript dictionary (`.sdef`) and its tabs are GPU-rendered (invisible to the Accessibility tree), so individual tabs can't be focused. Warp **windows** are accessible though, and a window's title is its active tab's title — so the server raises (`AXRaise` via System Events) the first Warp window whose title contains the basename of the session's `cwd` (case-insensitive) and returns `found: true`. If no window matches (e.g. the session lives in a background tab of a shared window) or Accessibility permission is missing, it falls back to `open -a Warp` with `found: false`. Since dashboard-launched agents each get their own window titled after the project, those always match.
+- **"New agent"** (`POST /api/new-agent`) — writes a Warp [Launch Configuration](https://docs.warp.dev/features/session-management/launch-configurations) YAML file to `~/.warp/launch_configurations/` (created if missing) with a `cd <dir> && claude <prompt>` command, then opens `warp://launch/<file>.yaml`, which makes Warp start (if not running) and open a **new window** in that directory running `claude`. Configs older than 1 hour are cleaned up on every launch. No Automation/osascript permission is required.
+
+Trade-off: "New agent" always opens a new window (Warp launch configs don't support attaching to an existing window), and "Open in Warp" focuses at window granularity — a session in a background tab of a shared window can't be targeted (Warp exposes no tab-level API; verified against the URI scheme docs and the app's Accessibility tree).
 
 ### Plan usage tracking
 
@@ -132,7 +132,8 @@ agent-dashboard/
 | `/api/sessions` | GET | Returns all recent agent sessions as JSON |
 | `/api/usage` | GET | Token usage stats from local JSONL files (24h) |
 | `/api/plan-usage` | GET | Claude.ai plan utilization (requires cookie) |
-| `/api/focus-terminal` | POST | Focus iTerm2 session by working directory |
+| `/api/new-agent` | POST | Launch a new `claude` session in a Warp window (Launch Configuration) |
+| `/api/focus-terminal` | POST | Raise the Warp window matching the session's `cwd` basename (fallback: activate Warp) |
 | `/api/update-cookie` | POST | Update the claude.ai cookie in `.env` |
 
 ## Acknowledgments

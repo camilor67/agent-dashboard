@@ -211,7 +211,7 @@
     <input id="newAgentPrompt" type="text" placeholder="Describe la tarea para el agente...">
     <div class="new-agent-actions">
       <button class="btn-cancel" onclick="closeNewAgentModal()">Cancelar</button>
-      <button class="btn-launch" onclick="launchNewAgent()">Lanzar en iTerm</button>
+      <button class="btn-launch" onclick="launchNewAgent()">Lanzar en Warp</button>
     </div>
   </div>
 </div>
@@ -1763,7 +1763,7 @@ function renderPanel() {
             <div class="card-detail">${s.detail || ''}</div>
           </div>
           <div class="card-meta">
-            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en iTerm</button>
+            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en Warp</button>
             <span>${timeAgo(s.lastActivity)}</span>
             <div class="card-cwd">${s.cwd || ''}</div>
           </div>
@@ -1790,7 +1790,7 @@ function renderPanel() {
             <div class="card-detail">${s.detail || ''}</div>
           </div>
           <div class="card-meta">
-            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en iTerm</button>
+            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en Warp</button>
             <span>${timeAgo(s.lastActivity)}</span>
             <div class="card-cwd">${s.cwd || ''}</div>
           </div>
@@ -1818,7 +1818,7 @@ function renderPanel() {
             <div class="card-detail">${s.detail || ''}</div>
           </div>
           <div class="card-meta">
-            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en iTerm</button>
+            ${s.model ? `<span class="card-model">${s.model}</span>` : ''}<button class="card-warp" onclick="event.stopPropagation();focusTerminal('${s.cwd}')">▸ Abrir en Warp</button>
             <span>${timeAgo(s.lastActivity)}</span>
             <div class="card-cwd">${s.cwd || ''}</div>
           </div>
@@ -1878,6 +1878,24 @@ function meterColor(pct) {
   return '#9ece6a';
 }
 
+// Map claude.ai's rate_limit_tier code → a human label (e.g. "Max (5x)").
+function tierLabel(tier) {
+  if (!tier) return '';
+  const known = {
+    default_claude_max_5x: 'Max (5x)',
+    default_claude_max_20x: 'Max (20x)',
+    default_claude_pro: 'Pro',
+    pro: 'Pro',
+    free: 'Free',
+  };
+  if (known[tier]) return known[tier];
+  // Generic prettify for unknown tiers.
+  return tier
+    .replace(/^default_claude_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function renderMeter({ label, util, resetAt, resetMode, hint, count }) {
   if (count) {
     // Count-based meter (e.g. "0 / 15")
@@ -1926,13 +1944,30 @@ function renderPlanUsage(data) {
     return;
   }
 
+  const tier = tierLabel(data.rate_limit_tier);
   let html = `<div class="plan-title">
     PLAN CLAUDE.AI
+    ${tier ? `<span style="font-size:0.6rem;font-weight:600;color:#7aa2f7;">${tier}</span>` : ''}
     <span style="font-size:0.55rem;font-weight:normal;color:#8890b0;">en vivo</span>
   </div>`;
 
-  // ── Plan usage limits (current 5h session) ─────────────────
-  if (data.five_hour) {
+  // New schema: `data.limits[]` is the canonical source. Fall back to the
+  // legacy top-level fields (`five_hour`, `seven_day*`) if it's absent.
+  const limits = Array.isArray(data.limits) ? data.limits : null;
+
+  // ── Plan usage limits (current session) ────────────────────
+  const sessionLimit = limits ? limits.find(l => l.group === 'session') : null;
+  if (sessionLimit) {
+    html += `<div class="plan-group">
+      <div class="plan-group-header"><span>Limites del plan</span></div>
+      ${renderMeter({
+        label: 'Sesion actual',
+        util: sessionLimit.percent,
+        resetAt: sessionLimit.resets_at,
+        resetMode: 'relative',
+      })}
+    </div>`;
+  } else if (data.five_hour) {
     html += `<div class="plan-group">
       <div class="plan-group-header"><span>Limites del plan</span></div>
       ${renderMeter({
@@ -1944,31 +1979,50 @@ function renderPlanUsage(data) {
     </div>`;
   }
 
-  // ── Weekly limits ──────────────────────────────────────────
+  // ── Weekly limits (dynamic, per-model) ─────────────────────
   const weeklyMeters = [];
-  if (data.seven_day) {
-    weeklyMeters.push(renderMeter({
-      label: 'Todos los modelos',
-      util: data.seven_day.utilization,
-      resetAt: data.seven_day.resets_at,
-      resetMode: 'absolute',
-    }));
-  }
-  if (data.seven_day_sonnet) {
-    weeklyMeters.push(renderMeter({
-      label: 'Solo Sonnet',
-      util: data.seven_day_sonnet.utilization,
-      resetAt: data.seven_day_sonnet.resets_at,
-      resetMode: 'absolute',
-    }));
-  }
-  if (data.seven_day_omelette) {
-    weeklyMeters.push(renderMeter({
-      label: 'Claude Design',
-      util: data.seven_day_omelette.utilization,
-      resetAt: data.seven_day_omelette.resets_at,
-      resetMode: 'absolute',
-    }));
+  const weeklyLimits = limits ? limits.filter(l => l.group === 'weekly') : null;
+  if (weeklyLimits) {
+    for (const l of weeklyLimits) {
+      const label = l.kind === 'weekly_scoped'
+        ? (l.scope?.model?.display_name || 'Modelo')
+        : 'Todos los modelos';
+      const pct = l.percent ?? 0;
+      weeklyMeters.push(renderMeter({
+        label,
+        util: pct,
+        resetAt: l.resets_at,
+        resetMode: 'absolute',
+        // When there's no reset yet and usage is 0, show "not used" (like claude.ai).
+        hint: pct === 0 ? `Aun no has usado ${label}` : '',
+      }));
+    }
+  } else {
+    // Legacy fallback.
+    if (data.seven_day) {
+      weeklyMeters.push(renderMeter({
+        label: 'Todos los modelos',
+        util: data.seven_day.utilization,
+        resetAt: data.seven_day.resets_at,
+        resetMode: 'absolute',
+      }));
+    }
+    if (data.seven_day_sonnet) {
+      weeklyMeters.push(renderMeter({
+        label: 'Solo Sonnet',
+        util: data.seven_day_sonnet.utilization,
+        resetAt: data.seven_day_sonnet.resets_at,
+        resetMode: 'absolute',
+      }));
+    }
+    if (data.seven_day_omelette) {
+      weeklyMeters.push(renderMeter({
+        label: 'Claude Design',
+        util: data.seven_day_omelette.utilization,
+        resetAt: data.seven_day_omelette.resets_at,
+        resetMode: 'absolute',
+      }));
+    }
   }
   if (weeklyMeters.length) {
     html += `<div class="plan-group">
@@ -1992,8 +2046,22 @@ function renderPlanUsage(data) {
     </div>`;
   }
 
-  // ── Extra usage ────────────────────────────────────────────
-  if (data.extra_usage) {
+  // ── Usage credits (spend), with legacy extra_usage fallback ─
+  if (data.spend) {
+    const sp = data.spend;
+    const status = sp.enabled ? 'Activado' : 'Desactivado';
+    let credits = '';
+    if (sp.used && sp.used.amount_minor != null) {
+      const amount = sp.used.amount_minor / Math.pow(10, sp.used.exponent ?? 2);
+      const sym = sp.used.currency === 'USD' ? '$' : '';
+      const cur = sym ? '' : ` ${sp.used.currency || ''}`;
+      credits = ` — ${sym}${amount.toFixed(sp.used.exponent ?? 2)}${cur} usado`;
+    }
+    html += `<div class="plan-extra">
+      <span>Creditos de uso</span>
+      <span class="plan-extra-status">${status}${credits}</span>
+    </div>`;
+  } else if (data.extra_usage) {
     const eu = data.extra_usage;
     const status = eu.is_enabled ? 'Activado' : 'Desactivado';
     const credits = eu.used_credits != null ? ` — $${eu.used_credits.toFixed(2)} usado` : '';
@@ -2169,7 +2237,10 @@ function wsConnect() {
 
 fetch('/api/sessions').then(r=>r.json()).then(onData).catch(()=>{});
 wsConnect();
-setInterval(() => fetch('/api/sessions').then(r=>r.json()).then(onData).catch(()=>{}), 5000);
+// Red de seguridad para reconexion WS (30s) — las transiciones de estado
+// ya llegan por WS via el tick del servidor (2s), esto ya no es el
+// mecanismo principal.
+setInterval(() => fetch('/api/sessions').then(r=>r.json()).then(onData).catch(()=>{}), 30000);
 
 // Pan with mouse drag
 let dragging = false, dragStart = { x: 0, y: 0 };
